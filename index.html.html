@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Automatización para partes de Prensa ANSV</title>
+    <style>
+        body { font-family: 'Montserrat', sans-serif; background-color: #f4f4f4; color: #333; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        h1, h2 { text-align: center; color: #242C4F; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="date"], textarea, select { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #242C4F; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #333; }
+        .delete-button { background-color: red; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; margin-top: 10px; }
+        .section, .news { padding: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; }
+        .news { border-top: none; }
+        .media-item { display: flex; margin-bottom: 10px; }
+        .media-item input[type="text"] { flex: 1; margin-right: 5px; }
+        .delete-container { text-align: right; }
+        .right-align { text-align: right; margin-top: 20px; }
+        /* Asegúrate de que el botón Limpiar formulario esté en rojo */
+        .red-button {
+            background-color: red;  /* Rojo */
+            color: white;
+            font-size: 14px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .red-button:hover {
+            background-color: darkred;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Crear Parte de Prensa</h1>
+        <div>
+            <label for="fecha">Seleccioná la fecha:</label>
+            <input type="date" id="fecha" required>
+            <label for="turno">Escribí cuál es la franja horaria:</label>
+            <input type="text" id="turno" placeholder="mañana/tarde" required>
+        </div>
+        <h2>Secciones</h2>
+        <div id="sections"></div>
+        <button onclick="addSection()">Agregar nueva sección</button>
+        <hr>
+        <button onclick="generateNote()">Exportar nota html para email</button>
+        <button onclick="exportToWhatsApp()">Exportar Síntesis</button>
+        <button onclick="exportToWhatsAppTemas()">Exportar Temas del día</button>
+        <!-- Coloca el botón de limpiar dentro de un div con la clase 'right-align' -->
+        <div class="right-align">
+            <button onclick="limpiarFormulario()" class="red-button">Limpiar formulario</button>
+        </div>
+    </div>
+
+    <script>
+        let sectionCount = 0;
+
+        // Al cargar la página, restaura los datos desde localStorage
+        window.addEventListener('load', function() {
+            document.getElementById('fecha').value = localStorage.getItem('fecha') || '';
+            document.getElementById('turno').value = localStorage.getItem('turno') || '';
+            
+            const sectionsData = JSON.parse(localStorage.getItem('sections')) || [];
+            sectionsData.forEach(sectionData => addSection(sectionData));
+        });
+
+        // Guardado automático de los campos de fecha y turno
+        document.getElementById('fecha').addEventListener('input', () => {
+            localStorage.setItem('fecha', document.getElementById('fecha').value);
+        });
+        document.getElementById('turno').addEventListener('input', () => {
+            localStorage.setItem('turno', document.getElementById('turno').value);
+        });
+
+        function addSection(savedData = {}) {
+            sectionCount++;
+            const sectionsDiv = document.getElementById('sections');
+            const section = document.createElement('div');
+            section.className = 'section';
+            section.id = 'section-' + sectionCount;
+            section.innerHTML = `
+                <label>Tipo de Sección:</label>
+                <select name="sectionType">
+                    <option value="Menciones ANSV">Menciones ANSV</option>
+                    <option value="Seguridad Vial">Seguridad Vial</option>
+                    <option value="Información general">Información general</option>
+                    <option value="Política y economía">Política y economía</option>
+                    <option value="Voces Periodistas">Voces Periodistas</option>
+                    <option value="Internacionales">Internacionales</option>
+                </select>
+                <div class="delete-container">
+                    <button class="delete-button" onclick="confirmDeleteSection(this)">Eliminar Sección</button>
+                </div>
+                <div id="news-container-${sectionCount}" class="news-container"></div>
+                <button type="button" onclick="addNews(${sectionCount})">Agregar Noticia</button>
+            `;
+
+            sectionsDiv.appendChild(section);
+            $(section).sortable({ items: '.news', axis: 'y', tolerance: 'pointer' });
+            const sectionSelect = section.querySelector('select[name="sectionType"]');
+            sectionSelect.value = savedData.type || 'Menciones ANSV';
+            sectionSelect.addEventListener('change', saveSections);
+
+            const newsData = savedData.news || [];
+            newsData.forEach(news => addNews(sectionCount, news));
+
+            saveSections();
+        }
+
+        function addNews(sectionId, savedData = {}) {
+            const newsContainer = document.getElementById('news-container-' + sectionId);
+            const newsCount = newsContainer.children.length + 1;
+
+            const newsDiv = document.createElement('div'); // Crear correctamente el div de noticia
+            newsDiv.className = 'news';
+
+            newsDiv.innerHTML = `
+                <label for="newsTitle">Título de la Noticia:</label>
+                <input type="text" name="newsTitle-${sectionId}-${newsCount}" placeholder="Título" value="${savedData.title || ''}" required>
+                <label for="newsContent">Contenido de la Noticia:</label>
+                <textarea name="newsContent-${sectionId}-${newsCount}" rows="4" placeholder="Contenido">${savedData.content || ''}</textarea>
+                <div class="delete-container">
+                    <button class="delete-button" onclick="confirmDeleteNews(this)">Eliminar Noticia</button>
+                </div>
+                <div id="media-container-${sectionId}-${newsCount}"></div>
+                <button type="button" onclick="addMedia(${sectionId}, ${newsCount})">Agregar Enlace Multimedia</button>
+            `;
+
+            newsContainer.appendChild(newsDiv);
+            $(newsContainer).sortable({ items: '.news', axis: 'y', tolerance: 'pointer' });
+
+            // Agregar eventos para guardar automáticamente los datos
+            newsDiv.querySelector(`input[name="newsTitle-${sectionId}-${newsCount}"]`).addEventListener('input', saveSections);
+            newsDiv.querySelector(`textarea[name="newsContent-${sectionId}-${newsCount}"]`).addEventListener('input', saveSections);
+
+            // Restaurar los medios guardados en localStorage
+            (savedData.media || []).forEach(media => addMedia(sectionId, newsCount, media));
+
+            saveSections();
+        }
+
+        function addMedia(sectionId, newsCount, savedData = {}) {
+            const mediaContainer = document.getElementById('media-container-' + sectionId + '-' + newsCount);
+
+            const mediaItem = document.createElement('div');
+            mediaItem.className = 'media-item';
+            mediaItem.innerHTML = `
+                <input type="text" name="mediaName" placeholder="Nombre del Enlace" value="${savedData.name || ''}" required>
+                <input type="text" name="mediaLink" placeholder="URL del Enlace" value="${savedData.link || ''}" required>
+                <div class="delete-container">
+                    <button class="delete-button" onclick="confirmDeleteMedia(this)">Eliminar Enlace</button>
+                </div>
+            `;
+
+            mediaContainer.appendChild(mediaItem);
+
+            // Asegura que cada campo de medio dispare la función saveSections al cambiar
+            mediaItem.querySelector('input[name="mediaName"]').addEventListener('input', saveSections);
+            mediaItem.querySelector('input[name="mediaLink"]').addEventListener('input', saveSections);
+        }
+
+        function saveSections() {
+            const sections = Array.from(document.querySelectorAll('.section')).map(section => {
+                const sectionSelect = section.querySelector('select[name="sectionType"]');
+                const sectionType = sectionSelect ? sectionSelect.value : '';
+
+                const newsData = Array.from(section.querySelectorAll('.news')).map(news => {
+                    const title = news.querySelector('[name^="newsTitle"]').value;
+                    const content = news.querySelector('[name^="newsContent"]').value;
+
+                    const mediaData = Array.from(news.querySelectorAll('.media-item')).map(mediaItem => ({
+                        name: mediaItem.querySelector('[name="mediaName"]').value,
+                        link: mediaItem.querySelector('[name="mediaLink"]').value
+                    }));
+
+                    return { title, content, media: mediaData };
+                });
+
+                return { type: sectionType, news: newsData };
+            });
+
+            localStorage.setItem('sections', JSON.stringify(sections));
+        }
+
+        function confirmDeleteSection(button) {
+            if (confirm("¿Estás seguro de que deseas eliminar esta sección?")) {
+                const section = button.closest('.section');
+                section.remove();
+                saveSections();
+            }
+        }
+
+        function confirmDeleteNews(button) {
+            if (confirm("¿Estás seguro de que deseas eliminar esta noticia?")) {
+                const news = button.closest('.news');
+                news.remove();
+                saveSections();
+            }
+        }
+
+        function confirmDeleteMedia(button) {
+            if (confirm("¿Estás seguro de que deseas eliminar este enlace?")) {
+                const mediaItem = button.closest('.media-item');
+                mediaItem.remove();
+                saveSections();
+            }
+        }
+
+        function limpiarFormulario() {
+            if (confirm("¿Estás seguro de que deseas limpiar el formulario?")) {
+                document.getElementById('fecha').value = '';
+                document.getElementById('turno').value = '';
+                document.getElementById('sections').innerHTML = '';
+                localStorage.clear();
+            }
+        }
+function generateNote() {
+  var fechaOriginal = document.getElementById('fecha').value;
+    var partesFecha = fechaOriginal.split('-');
+    var fecha = partesFecha[2] + '-' + partesFecha[1] + '-' + partesFecha[0];
+    var turno = document.getElementById('turno').value;
+   
+
+    var sections = document.querySelectorAll('.section');
+    var note = `
+    <!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parte de Prensa</title>
+</head>
+<body>
+    <div style="background-color: #242c4f; padding: 20px;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; margin-bottom: 10px;">
+            
+        </div>
+        <div style="text-align: center; color: #ffffff; font-family: 'Montserrat', sans-serif; font-size: 1.2em; margin-bottom: 20px;">
+            <h4 style="margin: 0;">Síntesis: ${turno} / Fecha: ${fecha}</h4>    
+        </div>`;
+
+    sections.forEach(function(section) {
+        var sectionType = section.querySelector('select[name="sectionType"]').value;
+        note += `<div style="background-color: #ffffff; padding: 20px; margin: 20px auto; border-radius: 10px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); width: 90%; font-size: 1em;">
+                    <h2 style="color: #45658D; font-size: 1.5em; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; text-align: left;">${sectionType}</h2>`;
+
+        var news = section.querySelectorAll('.news');
+        news.forEach(function(newsItem, index) {
+            var title = newsItem.querySelector('input[name^="newsTitle"]').value;
+            var content = newsItem.querySelector('textarea[name^="newsContent"]').value;
+
+            var mediaItems = newsItem.querySelectorAll('.media-item');
+            var firstMediaName = '';
+            var mediaText = '';
+
+            mediaItems.forEach(function(mediaItem, mediaIndex) {
+                var mediaLink = mediaItem.querySelector('input[name="mediaLink"]').value;
+                var mediaName = mediaItem.querySelector('input[name="mediaName"]').value;
+                
+                if (mediaIndex === 0) {
+                    firstMediaName = mediaName;
+                    mediaText += `Leer más: `;
+                }
+
+                mediaText += `<a href="${mediaLink}" style="color: #242C4F; font-size: 0.9em; text-decoration: none;">${mediaName}</a>`;
+                if (mediaIndex < mediaItems.length - 1) {
+                    mediaText += ' / ';
+                }
+            });
+
+            note += `<p style="color: #e7ba61; font-size: 0.9em; margin-top: 15px; font-weight: bold;">${firstMediaName}</p>
+                     <h3 style="color: #000000; font-size: 1.2em; font-weight: bold; margin-bottom: 5px;">${title}</h3>
+                     <p style="font-size: 1em;">${content}</p>`;
+            note += `<p style="color: #45658D; font-size: 0.9em;">${mediaText}</p>`;
+            
+            // Add <hr> only if not the last news item
+            if (index < news.length - 1) {
+                note += `<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">`;
+            } 
+        });
+
+        note += `</div>`;
+    });
+
+    note += `</div></body></html>`;
+
+    var blob = new Blob([note], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Parte_de_Prensa.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+ // Función para generar y descargar la nota para WhatsApp
+function exportToWhatsApp() {
+       var fecha = document.getElementById('fecha').value;
+        var turno = document.getElementById('turno').value;
+
+    var sections = document.querySelectorAll('.section');
+    var whatsappText = `📰 Sintesis: ${turno}\n🗓 ${fecha}\n\n`;
+
+    sections.forEach(function(section) {
+        var sectionType = section.querySelector('select[name="sectionType"]').value; 
+        whatsappText += `─────────────────\n*${sectionType.toUpperCase()}*\n─────────────────\n\n`;
+
+        var news = section.querySelectorAll('.news');
+        news.forEach(function(newsItem) {
+            var title = newsItem.querySelector('input[name^="newsTitle"]').value;
+            var content = newsItem.querySelector('textarea[name^="newsContent"]').value;
+
+            // Obtener el primer medio y su enlace
+            var mediaItems = newsItem.querySelectorAll('.media-item');
+            if (mediaItems.length > 0) {
+                var mediaName = mediaItems[0].querySelector('input[name="mediaName"]').value;
+                var mediaLink = mediaItems[0].querySelector('input[name="mediaLink"]').value;
+
+                // Formato de cada noticia
+                whatsappText += ` -📄 ${mediaName} \n *${title}*\n\n${content}\n🔗 ${mediaLink}\n\n`;
+            }
+        });
+
+        whatsappText += '\n';
+    });
+
+    var blob = new Blob([whatsappText], { type: 'text/plain' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Sintesis_whatsapp.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+function exportToWhatsAppTemas() {
+    var fecha = document.getElementById('fecha').value;
+
+    var sections = document.querySelectorAll('.section');
+    var whatsappText = `📌 Temas destacados del día\n🗓 ${fecha}\n\n`;
+
+    sections.forEach(function(section) {
+        var sectionType = section.querySelector('select[name="sectionType"]').value; 
+        whatsappText += `─────────────────\n*${sectionType.toUpperCase()}*\n─────────────────\n\n`;
+
+        var news = section.querySelectorAll('.news');
+        news.forEach(function(newsItem) {
+            var title = newsItem.querySelector('input[name^="newsTitle"]').value;
+            var content = newsItem.querySelector('textarea[name^="newsContent"]').value;
+
+            // Obtener el primer medio y su enlace
+            var mediaItems = newsItem.querySelectorAll('.media-item');
+            if (mediaItems.length > 0) {
+                var mediaName = mediaItems[0].querySelector('input[name="mediaName"]').value;
+                var mediaLink = mediaItems[0].querySelector('input[name="mediaLink"]').value;
+
+                // Formato de cada noticia
+                whatsappText += ` -📄 ${mediaName} \n *${title}*\n\n${content}\n🔗 ${mediaLink}\n\n`;
+            }
+        });
+
+        whatsappText += '\n';
+    });
+
+    var blob = new Blob([whatsappText], { type: 'text/plain' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'Temas_del_dia_WhatsApp.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+        // Funciones de exportación: generateNote, exportToWhatsApp, exportToWhatsAppTemas (quedan como en el original)
+
+        $(document).ready(function() {
+            $('#sections').sortable({
+                items: '.section',
+                axis: 'y',
+                tolerance: 'pointer'
+            });
+        });
+    </script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+</body>
+</html>
